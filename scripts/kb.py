@@ -21,7 +21,7 @@ import os
 import re
 import sys
 
-REQUIRED_FM = ["id", "title", "date", "source", "source_refs", "environment", "domain", "tags", "confidence", "status"]
+REQUIRED_FM = ["id", "title", "date", "goal", "outcome", "source", "source_refs", "environment", "domain", "tags", "confidence", "status"]
 REQUIRED_ENV = ["org", "surface", "hardware", "workload", "stack"]
 REQUIRED_SECTIONS = ["Symptom", "Root cause", "Fix", "Prevention", "Data points", "Generalizable lesson", "Verification"]
 PLACEHOLDERS = ["tbd", "todo", "???", "fixme", "xxx"]
@@ -232,6 +232,8 @@ def cmd_template(args):
 id: {slug}
 title: <one concrete sentence>
 date: <YYYY-MM-DD>
+goal: <what the investigation aimed to achieve + definition-of-done>
+outcome: <goal-met | partial | handed-off | understand-only> - <before->after or what remains>
 source: own_investigation
 source_refs:
   - <url or Meta id>

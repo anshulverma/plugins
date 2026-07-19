@@ -1,15 +1,16 @@
 # dexter — investigation methodology
 
-A disciplined loop for empirically localizing the root cause of *any* problem — a bug, an outage/SEV, a performance mystery, a flaky test, a regression — when reading the code is not enough and you must run experiments. It exists to stop the failure mode of **flip-flopping between plausible fixes without ever proving where the problem actually is.**
+A disciplined loop for achieving a stated **goal** on *any* problem — a bug, an outage/SEV, a performance mystery, a flaky test, a regression — by empirically localizing the cause and then driving through to the goal. It exists to stop two failure modes: **flip-flopping between plausible fixes without ever proving where the problem is**, and **stopping at "we understand the cause" when the goal was to fix it.**
 
-Five non-negotiable properties:
+Seven non-negotiable properties:
 
-1. **Durable audit trail.** Every test/experiment, code change, and result is logged under one unique investigation ID. Nothing lives only in chat.
-2. **Cumulative knowledge graph** (per investigation). Findings accrete as an append-only graph of facts, hypotheses, experiments, and observations joined by `supports`/`refutes`/`motivates`/`depends_on` edges. Knowledge only grows.
-3. **Multi-test hypothesis validation.** A hypothesis is `confirmed`/`refuted` only when **two or more independent tests agree AND the competing hypotheses are excluded.** No verdict from a single run; nothing left dangling.
-4. **Static baseline first**, including **where it happened** (environment). Deep-research an immutable baseline before experimenting; freeze it.
-5. **Cumulative knowledge base** (across investigations). Before starting, look up what we already learned; after finishing, write a structured, validated knowledge entry so the next investigation starts smarter.
-6. **Fastest viable feedback loop.** Actively find the cheapest way to get each signal before spending on the expensive one. A slow loop is the biggest hidden tax on an investigation — shrinking it is a first-class goal, not an afterthought.
+1. **Goal-driven completion.** Every investigation starts from an explicit goal with a definition-of-done, and is NOT complete until that goal is met and verified. Finding the root cause is a *milestone*, not the finish line — if the goal was to fix/speed-up/stop something, "done" means the target metric or behavior measurably moved. An RCA with no verified fix is an investigation still in progress. Report `IN PROGRESS` until the goal is met (or the remaining work is explicitly handed off/blocked with the reason named).
+2. **Durable audit trail.** Every test/experiment, code change, and result is logged under one unique investigation ID. Nothing lives only in chat.
+3. **Cumulative knowledge graph** (per investigation). Findings accrete as an append-only graph of facts, hypotheses, experiments, and observations joined by `supports`/`refutes`/`motivates`/`depends_on` edges. Knowledge only grows.
+4. **Multi-test hypothesis validation.** A hypothesis is `confirmed`/`refuted` only when **two or more independent tests agree AND the competing hypotheses are excluded.** No verdict from a single run; nothing left dangling. A *fix* is a hypothesis too — it is only confirmed when its measurement shows the goal metric moved.
+5. **Static baseline first**, including **where it happened** (environment). Deep-research an immutable baseline before experimenting; freeze it.
+6. **Cumulative knowledge base** (across investigations). Before starting, look up what we already learned; after finishing, write a structured, validated knowledge entry so the next investigation starts smarter.
+7. **Fastest viable feedback loop.** Actively find the cheapest way to get each signal before spending on the expensive one. A slow loop is the biggest hidden tax on an investigation — shrinking it is a first-class goal, not an afterthought.
 
 ## Optimize the feedback loop (do this before every experiment)
 
@@ -45,8 +46,8 @@ Route all logging through them so nothing is missed. `INV=~/workspace/investigat
 
 ## The loop
 
-### Phase 0 — Bootstrap
-`new_investigation.sh <slug>`; record the ID. `log.sh` the framing question. Note the **environment up front**: org (Meta/personal), surface (fbsource/MAST/devserver/prod/CI), hardware, workload, stack — this scopes everything and is required in the final knowledge entry.
+### Phase 0 — Goal + bootstrap
+`new_investigation.sh <slug>`; record the ID. **State the GOAL and its definition-of-done first**, and `log.sh` it as a `goal` node. The goal is what "done" means — and it is usually NOT "find the cause." If the ask is to fix a bug / speed something up / stop an outage, the definition-of-done is a **verified fix** (the target metric or behavior actually moved, measured), not just the root cause. Write the goal as a testable target, e.g. "raise training MFU from ~1.5% toward the double-digit floor, verified on the same config," not "understand why MFU is low." Also note the **environment up front**: org (Meta/personal), surface (fbsource/MAST/devserver/prod/CI), hardware, workload, stack — required in the final knowledge entry.
 
 ### Phase 1 — Baseline (look up, then research, then FREEZE)
 1. **Look up prior knowledge:** `kb.py search <symptom/domain/tags/env>`. Read any relevant entries — they may hand you the answer, the likely causes, or the cheap-repro trick. Cite them in the baseline.
@@ -64,14 +65,23 @@ Write the question as a `question` node; enumerate candidate causes as `hypothes
 5. **Record everything** — `record_job.sh` per run; `kg.py` nodes/edges for experiments/observations.
 6. **Verdict only at high confidence** — `confirmed`/`refuted` only when >=2 independent tests agree and competitors are excluded; else the hypothesis stays `open` (or `blocked`, naming the blocker). **Reconcile:** the measured parts must sum to the whole (e.g. phases sum to step_time); if they don't, you haven't localized it yet.
 
-### Phase 4 — Converge
-When every hypothesis has a verdict and the accounting reconciles, write `results/CONCLUSION.md`: localized cause, evidence chain (job IDs), and what is now known *not* to be the cause. Render the final graph. Propose the fix as separate work, validated by re-running the same measurement.
+### Phase 4 — Localize (root cause milestone, NOT the finish)
+When every hypothesis has a verdict and the accounting reconciles, write `results/CONCLUSION.md`: localized cause, evidence chain (job IDs), and what is now known *not* to be the cause. Render the final graph. **This is a milestone, not completion** — check the goal: if it was understand-only, go to Phase 6. Otherwise continue to Phase 5; the investigation stays `IN PROGRESS`.
 
-### Phase 5 — Bank the knowledge (mandatory)
-1. Write a **structured knowledge entry** to `~/workspace/investigations/knowledge/<slug>.md` conforming to `KNOWLEDGE-SCHEMA.md` — including the **environment** block. Run `kb.py validate <file>` and fix every gap (no holes), then `kb.py index`.
+### Phase 5 — Drive to the goal (fix + verify) — skip ONLY if the goal was understand-only
+The fix is not "separate work" — it is the rest of *this* investigation, run with the same rigor.
+1. **Design candidate fixes** from the confirmed cause; if several, rank by expected impact × cost and pick the highest-leverage one. Each candidate is a **hypothesis**: "change X will move goal-metric M by ~Y."
+2. **Implement** the fix (cheapest feedback loop first — a local repro / small config / one knob before a full remote run).
+3. **Verify** by measuring the goal metric on the same target and comparing to baseline. A fix is only `confirmed` when M actually moved in the right direction by a meaningful amount — not because it "should." A no-op or regression sends you back to step 1 with a new candidate.
+4. **Iterate** until the goal's definition-of-done is met, or the remaining work is explicitly handed off (name who/what) or blocked (name the blocker). Record every attempt as a job + graph node, kept or discarded with its measurement.
+5. Update `results/REPORT.md` to show the goal met (before → after numbers) or exactly what remains.
+
+### Phase 6 — Bank the knowledge (mandatory)
+1. Write a **structured knowledge entry** to `~/workspace/investigations/knowledge/<slug>.md` conforming to `KNOWLEDGE-SCHEMA.md` — including the **environment** block and the **verified fix** (before → after numbers). Run `kb.py validate <file>` and fix every gap (no holes), then `kb.py index`.
 2. If you learned a reusable *process* technique (a cheaper repro, a metric gotcha), append it to `~/workspace/investigations/LESSONS.md`.
 
 ## Rigor rules (read every time)
+- **The goal is the finish line, not the root cause.** An investigation is complete only when its definition-of-done is met and verified; a confirmed RCA with no verified fix is `IN PROGRESS`. Never present an RCA-only result as "done" when the goal was to fix something.
 - One variable per run; always keep a control arm; a single run is never proof.
 - Every claim cites a `job_id` or a baseline/KB reference.
 - Metrics lie until you've read what they measure; reconcile averages against tails; separate cold-start from steady state.

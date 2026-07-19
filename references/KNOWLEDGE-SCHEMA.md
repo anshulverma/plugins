@@ -13,6 +13,8 @@ YAML frontmatter + required body sections:
 id: <kebab-slug>                     # unique, stable
 title: <one concrete sentence>
 date: <YYYY-MM-DD>
+goal: <what the investigation set out to achieve, incl. definition-of-done>
+outcome: <goal-met | partial | handed-off | understand-only> — <one-line before->after result or what remains>
 source: own_investigation | external
 source_refs:                         # REQUIRED, >=1 — where this knowledge comes from / can be verified
   - <url or id: paste Pxxxx, GDoc, SEV Sxxxx, DERP, diff Dxxxx, task Txxxx, wiki, workplace post, article URL>
