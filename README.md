@@ -6,7 +6,7 @@ Named after the forensic analyst who solves cases by evidence, not hunches.
 
 ## Commands
 
-- **`/dexter:investigate <symptom/question>`** — run the full investigation loop: unique ID + durable audit trail, look up prior knowledge, frozen deep-researched baseline (incl. *where it happened*), a per-investigation knowledge graph, multi-test hypothesis verdicts (nothing dangling, parts must reconcile to the whole), a conclusion, and a banked knowledge entry at the end.
+- **`/dexter:solve <goal>`** — solve it end-to-end: state the goal + definition-of-done, unique ID + durable audit trail, look up prior knowledge, frozen deep-researched baseline (incl. *where it happened*), a per-investigation knowledge graph, multi-test hypothesis verdicts (nothing dangling, parts must reconcile to the whole), localize the cause (a milestone), then **drive through to a verified fix** — measured against baseline — and bank the learning. Reports `IN PROGRESS` until the goal is met, not just when the cause is found.
 - **`/dexter:learn <url | Pxxxx | SEV | DERP | Dxxxx | text>`** — ingest someone else's investigation/RCA and distil it into a validated, structured knowledge entry (symptom → root cause → fix → prevention → environment → generalizable lesson), with no holes.
 
 ## Where things live
