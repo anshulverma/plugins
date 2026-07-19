@@ -9,6 +9,23 @@ Five non-negotiable properties:
 3. **Multi-test hypothesis validation.** A hypothesis is `confirmed`/`refuted` only when **two or more independent tests agree AND the competing hypotheses are excluded.** No verdict from a single run; nothing left dangling.
 4. **Static baseline first**, including **where it happened** (environment). Deep-research an immutable baseline before experimenting; freeze it.
 5. **Cumulative knowledge base** (across investigations). Before starting, look up what we already learned; after finishing, write a structured, validated knowledge entry so the next investigation starts smarter.
+6. **Fastest viable feedback loop.** Actively find the cheapest way to get each signal before spending on the expensive one. A slow loop is the biggest hidden tax on an investigation — shrinking it is a first-class goal, not an afterthought.
+
+## Optimize the feedback loop (do this before every experiment)
+
+Before running any experiment, explicitly answer: *what is the fastest way to get this signal?* Then use the cheapest tier that still exercises the mechanism. Record the tier you chose and why in the journal, so the cost/coverage tradeoff is auditable.
+
+Cheapening tactics, in order of preference:
+- **Run it locally instead of remote.** Can the component under test (dataloader, decode/fetch, tokenizer, a pure function, a query) run on a devserver/laptop rather than a remote/MAST/cluster job? A local repro is often minutes vs hours and avoids scheduling/queue latency. (In this repo: `rl/run.sh python <probe>.py` drove the dataloader locally at ~90s/iter vs ~2h/MAST-run.)
+- **Reuse what's already running.** Trigger profiling/inspection on a live job instead of launching a new one; read an existing trace/log/metric before producing a new one.
+- **Shrink the job.** Preresolved/smaller configs, fewer steps (`max_steps`), sub-sampled data, `fast_dev_run`/dry-run, a single shard, warm/cached builds over cold, a profiling window instead of the whole run.
+- **Isolate the unit.** Extract the suspect stage into a standalone script/benchmark you can iterate on in a tight loop, rather than exercising the whole system each time.
+- **Parallelize.** Run independent measurements/arms concurrently (background jobs, parallel agents) so wall-clock is the slowest one, not the sum.
+- **Escalate only when forced.** Move to the expensive/remote tier only when the cheap tier structurally cannot exercise the mechanism (e.g. you genuinely need the GPU/model/cluster for forward/backward/comms, or production scale/data).
+
+**Representativeness check:** when you use a cheaper tier, confirm it stands in for the real one by matching at least one shared metric to a real run (e.g. local per-image fetch 807ms ≈ GPU-worker 864ms). An unrepresentative cheap loop is worse than a slow correct one.
+
+Capture reusable cheap-repro tricks in `~/workspace/investigations/LESSONS.md` so the next investigation inherits a faster loop.
 
 ## Directory layout
 
