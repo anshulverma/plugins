@@ -6,7 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Personal Claude Code plugins. Each top-level subdirectory is a **self-contained plugin**: a `.claude-plugin/plugin.json` manifest plus a `commands/` directory (and optionally `references/` and `scripts/`). Plugins are activated by symlinking each into `~/.claude/plugins/local/<name>`. There is no build step, package manager, or test framework — the "code" is Markdown command prompts plus small standalone helper scripts.
 
-Currently one plugin: **dexter**.
+`install.sh` at the repo root activates everything at once: it symlinks every plugin (any dir with `.claude-plugin/plugin.json`) into `~/.claude/plugins/local/<name>`, then installs the statusline. It is idempotent and requires `jq`.
+
+Currently one plugin: **dexter**. Plus one non-plugin asset: **statusline**.
+
+## statusline (non-plugin)
+
+`statusline/statusline-command.sh` is a Claude Code statusline, forked from [danielmackay/claude-code-statusline](https://github.com/danielmackay/claude-code-statusline). It is **not** a plugin (a statusline is configured through settings.json `statusLine`, not a `plugin.json`), so it is not symlinked into `plugins/local/`. Instead `install.sh` symlinks the script to `~/.claude/statusline-command.sh` and merges a `statusLine` block into `~/.claude/settings.json` via `jq` (existing keys preserved).
+
+Local addition over upstream: a `🧩 i-have-adhd` badge on line 1, shown when the [i-have-adhd](https://github.com/ayghri/i-have-adhd) always-on flag `${CLAUDE_CONFIG_DIR:-~/.claude}/.i-have-adhd-always` exists. That flag file is the only persistent signal for the mode; a per-session `/i-have-adhd` invocation leaves nothing on disk, so it is intentionally not detected. The script reads its JSON status payload from stdin (`jq`) and appends optional badges (`💪` effort, `🧩` adhd) only when present, using positional `printf` args.
 
 ## Critical architecture: plugin code vs. runtime data
 
