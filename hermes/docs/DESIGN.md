@@ -528,6 +528,11 @@ master or worker. GPU/RE specifics live entirely in the `meta` site's
   (health + add-host modal), findings, live feed; light+dark; attention banners.
 - **CLI** mirrors it: `hermes status [--watch]`, `hermes crew`,
   `hermes show <ticket>`.
+- **Federation-ready seam (future).** The API is also shaped as the *north-bound
+  delegation interface*: it includes (a) "submit a batch of externally-created
+  tickets into a run" and (b) "`events since(cursor)`" — both already needed by the
+  UI — so a future **parent Hermes can drive a deputy purely as an API client**
+  with no separate protocol. See §15 and `docs/specs/federation-future.md`.
 
 ---
 
@@ -603,3 +608,28 @@ Ordering is adjustable; the engine core must land first.
   this repo** as the reference implementation under `hermes-site-meta/` (§4) and
   is selected at deploy time via `HERMES_SITE=meta` (default `local`). No
   separate private location.
+
+---
+
+## 15. Future extension: federation (multi-level Hermes)
+
+**Deferred — Hermes ships flat.** A recorded future capability lets a **parent
+Hermes delegate a shard of tickets to deputy Hermes nodes**, each running its own
+`crew`, **recursively to arbitrary depth** (root → deputy → deputy → … → crew) —
+"a lieutenant is just a Hermes." Full spec: **`docs/specs/federation-future.md`**.
+
+Decided shape (built only when a real trigger appears — scale beyond one root,
+multi-region/zone crews, or org boundaries):
+- **Delegation link** = the §10 control-plane API (parent is an API client of each
+  deputy); **reduce** = global roll-up at the root, with opt-in associative
+  pre-reduce at deputies; **leases** = local disjoint pools per deputy, with an
+  opt-in parent-held global semaphore for a genuinely shared scarce pool.
+- **No-ship holds transitively** — the guard/`verify` are per-node, so every leaf
+  is protected regardless of depth. **No shared DB** — each node owns its own
+  `queue.db`, preserving the flat invariant.
+
+**Do not build it now.** The flat design stays authoritative. Today we only adopt
+the cheap **federation-ready seams** (`federation-future.md` §14): shape the
+control-plane API as the north-bound delegation interface (§10 seam bullet), keep
+`driver.command` opaque enough that `hermes run` can be a driver, and keep every
+node's state/guard strictly per-node. Nothing else in the flat engine changes.
