@@ -1,8 +1,8 @@
-# Foreman — design (umbrella)
+# Hermes — design (umbrella)
 
 Status: **draft**. Date: 2026-07-28.
 
-Foreman is a generic engine for running **multi-agent Claude Code work across a
+Hermes is a generic engine for running **multi-agent Claude Code work across a
 fleet of remote hosts**. It is the successor to `test-fix-harness`, redesigned to
 cleanly separate three concerns that were fused together in the original:
 
@@ -23,10 +23,10 @@ Mapped from the revamp request:
 
 | # | Goal | How this design meets it |
 |---|------|--------------------------|
-| 1 | Clever rename | `foreman` (engine) musters a **crew** of hosts and hands out **tickets**; playbooks are trades: **mechanic** (test-fix), **rigger** (training-eff), **medic** (SEV-RCA). |
+| 1 | Clever rename | `hermes` (engine) musters a **crew** of hosts and hands out **tickets**; playbooks are trades: **mechanic** (test-fix), **rigger** (training-eff), **medic** (SEV-RCA). |
 | 2 | Separate harness-from-application | Three extension axes: engine / playbook / site. The engine knows nothing about tests. |
 | 3 | Friendlier + web UI | React/Vite control-plane SPA (see `web/UI_BRIEF.md`) over a FastAPI JSON API; a mirrored CLI. |
-| 4 | Easy to add a host + health check | `foreman crew add <host>` (or a UI button) runs the site's provision + a structured **health probe**; only healthy hosts are admitted, and health is re-probed on a heartbeat. |
+| 4 | Easy to add a host + health check | `hermes crew add <host>` (or a UI button) runs the site's provision + a structured **health probe**; only healthy hosts are admitted, and health is re-probed on a heartbeat. |
 | 5 | Richer status | Generic event stream + JSON API + SPA (kanban, crew health, live feed, drill-downs, attention banners). |
 | 6 | Separate Meta terminology/tools | **All Meta-isms live in the `meta` site adapter**, injected at deploy time. The engine and playbooks are site-agnostic. |
 | 7 | Reusable for different multi-agent work | Playbooks are pluggable; ships **mechanic** + **rigger**, designed to also fit **medic**. |
@@ -64,7 +64,7 @@ autonomous commands.**
 
 ```
                        ┌──────────────────────────────────────────┐
-                       │                FOREMAN ENGINE             │
+                       │                HERMES ENGINE             │
                        │  queue · dispatch · transport · crew +    │
                        │  health · leases · contracts · events ·   │
                        │  control-plane API · web UI · CLI         │
@@ -79,7 +79,7 @@ autonomous commands.**
                        mechanic · rigger · medic     local · meta
 ```
 
-- **Engine (`foreman`)** — generic. Owns the queue, dispatch, transports, crew
+- **Engine (`hermes`)** — generic. Owns the queue, dispatch, transports, crew
   registry + health, leases, contracts, the event stream, the control-plane API,
   the web UI, and the CLI. Contains **no** test/SEV/Meta concepts.
 - **Playbook** — declares: how to **seed** tickets, the ticket **payload +
@@ -189,10 +189,10 @@ stays **stdlib-only** (dotsync-safe, like dexter's `kb.py`); the control-plane
 
 ```
 plugins/
-  foreman/                       # ENGINE plugin
+  hermes/                       # ENGINE plugin
     .claude-plugin/plugin.json
-    commands/                    # /foreman:run · :status · :crew · :serve
-    skills/foreman/SKILL.md
+    commands/                    # /hermes:run · :status · :crew · :serve
+    skills/hermes/SKILL.md
     engine/                      # stdlib-only python package
       db/  (schema.sql, migrate.py)
       queue.py     dispatch.py   transport.py
@@ -206,17 +206,17 @@ plugins/
     testkit/                     # mock agent runner + fixtures (shared by tests)
     docs/  (DESIGN.md, specs/…)
     tests/{unit,integration,e2e}
-  mechanic/                      # test-fix playbook (depends on foreman)
+  mechanic/                      # test-fix playbook (depends on hermes)
     playbook/ (seed, phases, prompts/, reduce, done, schema)
     commands/ (/mechanic:fix, :status)     tests/
   rigger/                        # training-efficiency playbook              tests/
-  foreman-site-meta/             # THE Meta site adapter (deploy-time)
+  hermes-site-meta/             # THE Meta site adapter (deploy-time)
     site/ (od hosts, ssh recipe, buck2/sl/jf, testinfra, gpu/re, guards, health)
     tests/
 ```
 
 **Runtime data** (queue.db, logs, ticket payloads/evidence) lives **outside the
-repo** under `FOREMAN_HOME` (default `~/.foreman`), mirroring dexter's
+repo** under `HERMES_HOME` (default `~/.hermes`), mirroring dexter's
 code-vs-runtime-data split and today's `~/.tfh`. The engine and scripts own all
 reads/writes to it; nothing hardcodes a user path (the original hardcoded
 `/data/users/anshulverma/...` — that becomes site config).
@@ -239,7 +239,7 @@ additive-only migrations (ported discipline from `schema.sql`).
 - `leases` — id, resource_class, holder_ticket, host, acquired_at, ttl_s,
   expires_at.
 - `events` — append-only feed: ts, kind, run_id, ticket_id, host, message,
-  data_json (drives the live UI feed + `foreman status`).
+  data_json (drives the live UI feed + `hermes status`).
 - `findings` — generic JSON-doc store: run_id, ticket_id, kind, json (a
   playbook interprets its own `kind`s — root_cause, metric_sample, …).
 - `reductions` — master-side aggregate output: run_id, kind, json, review_state.
@@ -331,7 +331,7 @@ Adding a host is one command or one UI button; the site adapter encapsulates the
 "how."
 
 ```
-foreman crew add <host>
+hermes crew add <host>
   → site.provision(host, base_ref)      # idempotent: workspace, agent, guard, warm caches
   → report = site.health(host)          # structured probe
   → admit iff report.ok, else show exactly which checks failed
@@ -368,7 +368,7 @@ same-named `Check` entries every site must emit; a site may add further checks
 (§11).
 
 The daemon re-probes health on a heartbeat (default every 30 s, configurable via
-`FOREMAN_HEARTBEAT_S`); a member that fails a probe goes `down`, its in-flight
+`HERMES_HEARTBEAT_S`); a member that fails a probe goes `down`, its in-flight
 ticket is requeued (transport failure ⇒ no attempt penalty, ported semantics),
 and the member is re-admitted automatically once a later probe passes. This
 replaces the original's stubbed `verify_worker.sh` / `bootstrap_worker.sh` with a
@@ -378,8 +378,8 @@ real, per-site, structured probe.
 
 ## 8. The driver model — making best use of Claude (`/goal`, `/loop`, …)
 
-**Foreman is a goal dispatcher, not a prompt templater.** Instead of shipping a
-bespoke prompt, foreman hands each crew member a **GoalEnvelope**: a **completion
+**Hermes is a goal dispatcher, not a prompt templater.** Instead of shipping a
+bespoke prompt, hermes hands each crew member a **GoalEnvelope**: a **completion
 condition** (delivered via `/goal <condition>`) plus a **methodology driver** —
 a high-level Claude Code command/skill that pursues that condition autonomously.
 The worker prompt becomes thin: set the goal, invoke the driver, emit the strict
@@ -388,7 +388,7 @@ result contract.
 `/goal` is the backbone of this model. It sets a **persistent completion
 condition** and lets Claude work **autonomously across multiple turns until a
 secondary fast model verifies the goal is met** — which is precisely a ticket's
-definition-of-done. Sub-commands foreman uses:
+definition-of-done. Sub-commands hermes uses:
 
 - `/goal <condition>` — start the ticket's autonomous pursuit.
 - `/goal` — poll status (is the condition met yet?).
@@ -410,12 +410,12 @@ class Driver:
 So `/goal` (completion condition) and the methodology command **compose**: e.g.
 set `/goal "test X is green and a diff is published"`, then kick off with
 `/mp-diagnose`/`/ci-autopilot`. Two layers of verification result — `/goal`'s
-worker-side verifier, and foreman's independent master-side re-verify (§11) — and
+worker-side verifier, and hermes's independent master-side re-verify (§11) — and
 the no-trust invariant holds.
 
 **Why:** these commands already encode disciplined, autonomous loops (diagnose →
 reproduce → fix → verify; experiment → measure → keep/discard). Reusing them
-means foreman gets Claude's best autonomous behavior for free and stays out of
+means hermes gets Claude's best autonomous behavior for free and stays out of
 the business of re-implementing methodology in prompt text.
 
 **Driver-per-phase, chosen by the playbook** (`Playbook.driver(phase)`). The
@@ -461,7 +461,7 @@ Generic resource leases (not GPU-specific): a ticket declares `resource_req`
 matching, healthy crew member. Scarce classes sit behind a semaphore; overflow
 **parks** (ported behavior). A lease carries a TTL (`ttl_s`, default 1800 s) and
 is renewed **on the same 30 s crew-health heartbeat cycle** (§7,
-`FOREMAN_HEARTBEAT_S`) while its ticket runs — there is **no** separate lease
+`HERMES_HEARTBEAT_S`) while its ticket runs — there is **no** separate lease
 timer; the daemon renews every live lease as part of each heartbeat sweep. `ttl_s`
 (1800 s) is deliberately ≫ the 30 s heartbeat so a lease survives a few missed
 sweeps before expiring. A lease whose holder is unreachable past `expires_at`
@@ -491,16 +491,16 @@ master or worker. GPU/RE specifics live entirely in the `meta` site's
   cleared banner re-raised)), ack banner.
 - **Auth & binding (required — these actions are destructive and workers run
   `bypassPermissions`).** The server **binds to `127.0.0.1` by default**
-  (`FOREMAN_BIND`, overridable to `0.0.0.0` only behind a trusted proxy). A
-  **bearer token** (generated on first `foreman serve`, stored 0600 at
-  `$FOREMAN_HOME/api_token`, rotatable via `foreman serve --rotate-token`) is
+  (`HERMES_BIND`, overridable to `0.0.0.0` only behind a trusted proxy). A
+  **bearer token** (generated on first `hermes serve`, stored 0600 at
+  `$HERMES_HOME/api_token`, rotatable via `hermes serve --rotate-token`) is
   **required on every mutating request** (`POST`/`DELETE`, i.e. all control
   actions above) and on the **websocket handshake** (`?token=` or
   `Authorization` header). Read-only `GET` endpoints are token-gated too whenever
   the bind address is non-loopback. A missing/invalid token ⇒ `401`; the websocket
   closes with code `4401`. Requests without a valid token can never mutate state.
 - **Token acquisition per actor.** The **CLI** reads the token directly from
-  `$FOREMAN_HOME/api_token` (same host, 0600 file). The **SPA is served by the
+  `$HERMES_HOME/api_token` (same host, 0600 file). The **SPA is served by the
   same FastAPI server** and, being a browser app, has no filesystem access, so it
   obtains the token as follows:
   - **Loopback default (`127.0.0.1`):** the server injects the current token into
@@ -514,7 +514,7 @@ master or worker. GPU/RE specifics live entirely in the `meta` site's
     pastes the token (or the trusted proxy supplies it), again held in memory only.
 - **Token lifecycle.** The token is a single shared secret with **no TTL** (it
   does not expire on its own) and **no per-actor scoping/permissions** — every
-  holder has full control-plane authority. `foreman serve --rotate-token`
+  holder has full control-plane authority. `hermes serve --rotate-token`
   generates a new token and **immediately invalidates all in-flight sessions**:
   subsequent requests bearing the old token get `401`, and every open websocket
   authenticated with it is closed with code `4401` (clients must re-fetch/re-enter
@@ -526,8 +526,8 @@ master or worker. GPU/RE specifics live entirely in the `meta` site's
 - **UI** (`web/`, React/Vite SPA): generated from `web/UI_BRIEF.md` by Claude
   Design. Screens: run overview, ticket kanban, ticket drill-down, crew panel
   (health + add-host modal), findings, live feed; light+dark; attention banners.
-- **CLI** mirrors it: `foreman status [--watch]`, `foreman crew`,
-  `foreman show <ticket>`.
+- **CLI** mirrors it: `hermes status [--watch]`, `hermes crew`,
+  `hermes show <ticket>`.
 
 ---
 
@@ -600,6 +600,6 @@ Ordering is adjustable; the engine core must land first.
   that only needs the CLI never imports FastAPI. The dependency is isolated to
   the control-plane server (§4, §10).
 - **RESOLVED — `meta` site location (2026-07-28).** The `meta` adapter ships **in
-  this repo** as the reference implementation under `foreman-site-meta/` (§4) and
-  is selected at deploy time via `FOREMAN_SITE=meta` (default `local`). No
+  this repo** as the reference implementation under `hermes-site-meta/` (§4) and
+  is selected at deploy time via `HERMES_SITE=meta` (default `local`). No
   separate private location.

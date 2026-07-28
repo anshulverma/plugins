@@ -1,4 +1,4 @@
-# Hardening Report: Foreman engine-core spec + plan
+# Hardening Report: Hermes engine-core spec + plan
 
 Date: 2026-07-28. Mode: `auto-plan --harden --max-passes 10` over the two-document
 artifact set (`engine-core.md` + `engine-core-plan.md`), with `DESIGN.md` as a
@@ -33,11 +33,11 @@ bump reflects the parked-state/lease-capacity cluster that earlier passes missed
 | Pass | Material fixes |
 |------|----------------|
 | 1 | Missing envelope `payload` field; `done_contract` naming + `Issue`/`IssueQuery` shape aligned to DESIGN; **entire run-state machine** added; built-but-untested `ssh_transport` given a test. |
-| 2 | Run control had no setter → added `set_run_state` + `foreman run pause/resume/stop`; reduction accept/reject + `needs_human` resolution built by no slice → added callables + `foreman reduction accept/reject` + `reduction_id` linkage; uniform `reducing` gate; `payload_sha256` compute/verify assigned + tamper test. |
+| 2 | Run control had no setter → added `set_run_state` + `hermes run pause/resume/stop`; reduction accept/reject + `needs_human` resolution built by no slice → added callables + `hermes reduction accept/reject` + `reduction_id` linkage; uniform `reducing` gate; `payload_sha256` compute/verify assigned + tamper test. |
 | 3 | **FK type bug**: `tickets.reduction_id TEXT` vs `reductions.id INTEGER` (would silently break under `foreign_keys=ON`) → `INTEGER`; `paused` freezes ALL progression (not just dispatch); phase-advancement gate tightened to avoid orphaning requeued `parked`/`needs_human` tickets. |
 | 4 | **Parked/lease cluster**: no capacity source, no lease-release-on-completion, no park/unpark callables → capacity = Σ per-host resources; `release` on completion; `park_ticket`/`unpark_ready`; `reclaim_expired` requeues only non-terminal. |
 | 5 | Lease `release` now fires on **every** `running` exit (incl. infra-retry + transport requeue), not just success paths; Slice 8 gains the `unpark_ready` deliverable + re-admit test. |
-| 6 | **AC2 was unsatisfiable**: `foreman run` only started `master_loop` (which never claims/executes) → now co-launches in-process serve loops for local hosts. |
+| 6 | **AC2 was unsatisfiable**: `hermes run` only started `master_loop` (which never claims/executes) → now co-launches in-process serve loops for local hosts. |
 | 7 | `record_result` signature lacked `playbook`/`site` needed to evaluate the `verify` gate it applies → added. |
 | 8 | (none — clean confirmation) |
 
@@ -52,17 +52,17 @@ bump reflects the parked-state/lease-capacity cluster that earlier passes missed
 
 ## Cross-sub-project item to reconcile later (NOT a blocker)
 
-- **`foreman serve` verb collision**: engine-core §10 uses `foreman serve --host`
-  for the per-host worker loop; `DESIGN.md` §10 uses `foreman serve` for the
+- **`hermes serve` verb collision**: engine-core §10 uses `hermes serve --host`
+  for the per-host worker loop; `DESIGN.md` §10 uses `hermes serve` for the
   sub-project-3 FastAPI control-plane server (which mints `api_token`).
   Recommendation (deferred to sub-project 3): name the API server
-  `foreman serve --api` / `foreman serve-api` and keep `foreman serve --host` for
+  `hermes serve --api` / `hermes serve-api` and keep `hermes serve --host` for
   the worker loop.
 
 ## Artifacts
 
-- Hardened spec: `foreman/docs/specs/engine-core.md`
-- Hardened plan: `foreman/docs/specs/engine-core-plan.md`
+- Hardened spec: `hermes/docs/specs/engine-core.md`
+- Hardened plan: `hermes/docs/specs/engine-core-plan.md`
 - Convergence data: `2026-07-28-engine-core-convergence.csv`; this report.
 
 Per-pass snapshots were transient; the per-pass tables above are the audit trail.

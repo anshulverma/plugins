@@ -1,4 +1,4 @@
-# Hardening Report: Foreman design (`foreman/docs/DESIGN.md`)
+# Hardening Report: Hermes design (`hermes/docs/DESIGN.md`)
 
 Date: 2026-07-28. Mode: `auto-plan --harden --max-passes 10 --skip-plan` on an
 existing spec.
@@ -25,13 +25,13 @@ instability score per pass (material + gaps + pending + unresolved markers)
  0                     ← converged (pass 7)
 ```
 
-(`2026-07-28-foreman-design-convergence.csv` has the component breakdown.)
+(`2026-07-28-hermes-design-convergence.csv` has the component breakdown.)
 
 ## What each pass changed
 
 | Pass | Material fixes | Judge verdict |
 |------|----------------|---------------|
-| 1 | Unified `goal`/`driver`/`timeout` duplication in the contract; defined `failed`/`needs_human`/`parked` state semantics + retry-exhaustion; added heartbeat (30 s) + lease TTL (1800 s) defaults; closed both original open questions (FastAPI isolated to `server/`; `meta` site ships in-repo, `FOREMAN_SITE=meta`). | NOT CONVERGED (9 material) |
+| 1 | Unified `goal`/`driver`/`timeout` duplication in the contract; defined `failed`/`needs_human`/`parked` state semantics + retry-exhaustion; added heartbeat (30 s) + lease TTL (1800 s) defaults; closed both original open questions (FastAPI isolated to `server/`; `meta` site ships in-repo, `HERMES_SITE=meta`). | NOT CONVERGED (9 material) |
 | 2 | Defined `Result`, `Check`, `IssueQuery`, `Issue` types; split driver-failure (terminal) vs infra-failure (retry ×3); made `guardrails` concrete (`{no_ship}`); dropped unenforceable `max_turns`; added localhost-bind + bearer-token API auth. | NOT CONVERGED (9 material) |
 | 3 | Total `termination_reason → outcome → disposition` table (timeout ⇒ terminal); `Site.guarantees_no_ship()`; `review_state` enum; two-level no-ship enforcement; SPA token acquisition + token lifecycle; re-verify-failure ⇒ `needs_human`. | NOT CONVERGED (6 material) |
 | 4 | Added reduction accept/reject control action (REST + events + `409`) and the `reductions` read endpoint. | NOT CONVERGED (2 material) |
@@ -56,8 +56,8 @@ low-stakes and reversible, flagged here so you can confirm:
 
 ## Artifacts
 
-- Hardened spec: `foreman/docs/DESIGN.md`
-- Convergence data: `2026-07-28-foreman-design-convergence.csv`
+- Hardened spec: `hermes/docs/DESIGN.md`
+- Convergence data: `2026-07-28-hermes-design-convergence.csv`
 - This report
 
 Per-pass snapshots were transient; the per-pass change tables above are the audit

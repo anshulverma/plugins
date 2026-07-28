@@ -1,6 +1,6 @@
-# Foreman engine core — spec (sub-project 1)
+# Hermes engine core — spec (sub-project 1)
 
-Status: **draft**. Date: 2026-07-28. Parent: `foreman/docs/DESIGN.md`.
+Status: **draft**. Date: 2026-07-28. Parent: `hermes/docs/DESIGN.md`.
 
 This spec covers **sub-project 1** from the umbrella design's §13: the generic
 engine, its `local` reference site, the `testkit` mock agent, and the full
@@ -41,9 +41,9 @@ model are defined in `DESIGN.md`; this spec makes them implementation-ready.
 ## 2. Module layout & responsibilities
 
 ```
-foreman/engine/
+hermes/engine/
   __init__.py
-  config.py        # FOREMAN_HOME resolution, env vars, paths, defaults
+  config.py        # HERMES_HOME resolution, env vars, paths, defaults
   db/
     schema.sql     # DDL (§4)
     migrate.py     # idempotent additive migration runner + connect()
@@ -59,16 +59,16 @@ foreman/engine/
   dispatch.py      # serve loop (per-host worker), master loop, reduce/advance driver
   playbook.py      # Playbook Protocol + registry/loader
   site.py          # Site Protocol + registry/loader
-  cli.py           # `foreman` entrypoint: run, status, crew, serve, show
+  cli.py           # `hermes` entrypoint: run, status, crew, serve, show
 
-foreman/sites/local/site.py     # LocalSite(Site)
-foreman/testkit/
+hermes/sites/local/site.py     # LocalSite(Site)
+hermes/testkit/
   mock_agent.py    # fake worker: envelope in -> deterministic result out
   example_playbook.py            # EchoPlaybook(Playbook): 2 phases, trivial reduce
-  fixtures.py      # temp FOREMAN_HOME, seeded runs, canned issues
+  fixtures.py      # temp HERMES_HOME, seeded runs, canned issues
 
-foreman/tests/{unit,integration}/...
-foreman/scripts/run_tests.sh
+hermes/tests/{unit,integration}/...
+hermes/scripts/run_tests.sh
 ```
 
 Each module is independently unit-testable; nothing outside `db/` and `config.py`
@@ -77,12 +77,12 @@ spawns subprocesses.
 
 ---
 
-## 3. Runtime data layout (`FOREMAN_HOME`)
+## 3. Runtime data layout (`HERMES_HOME`)
 
-`config.resolve_home()` returns `$FOREMAN_HOME` or `~/.foreman`. Layout:
+`config.resolve_home()` returns `$HERMES_HOME` or `~/.hermes`. Layout:
 
 ```
-$FOREMAN_HOME/
+$HERMES_HOME/
   queue.db                 # SQLite, WAL, mode 0600 (§4)
   api_token                # bearer token (created by `serve`; sub-project 3 uses it)
   logs/                    # serve loop logs
@@ -93,7 +93,7 @@ $FOREMAN_HOME/
 ```
 
 `queue.db` is **never** placed on a networked/again-synced filesystem (ported
-invariant); `config` refuses a `FOREMAN_HOME` under a known-networked mount and
+invariant); `config` refuses a `HERMES_HOME` under a known-networked mount and
 errors with a clear message.
 
 ---
@@ -243,12 +243,12 @@ running ──control: pause──▶ paused ──control: resume──▶ runn
 running|paused ──control: stop──▶ stopped              (terminal)
 ```
 
-- `running` is the initial state (set by `foreman run`). `done`, `failed`,
+- `running` is the initial state (set by `hermes run`). `done`, `failed`,
   `stopped` are terminal.
 - `pause`/`resume`/`stop` are **control actions**, each applied by the engine
   callable `queue.set_run_state(conn, run_id, target, now)` (the single function
   that mutates `runs.state`; §9). All three have a CLI surface in this sub-project
-  via `foreman run {pause|resume|stop} <run_id>` (`foreman run <playbook>` starts a
+  via `hermes run {pause|resume|stop} <run_id>` (`hermes run <playbook>` starts a
   run); the server sub-project 3 additionally exposes them over HTTP. The engine
   must honor all three states regardless of caller. `set_run_state` is the single
   function that transitions `runs.state` (initial `running` set at creation) and
@@ -458,7 +458,7 @@ that block `git push`/land-like commands, ported `land_guard`);
   the freed class. TTL default 1800s ≫ 30s heartbeat.
 - **crew.py** — `add(conn, site, host)` = `provision` + `health`; admit only if
   `health.ok`, else raise with the failing checks; `heartbeat_sweep(conn, site,
-  now)` re-probes every host every `FOREMAN_HEARTBEAT_S` (default 30), updates
+  now)` re-probes every host every `HERMES_HEARTBEAT_S` (default 30), updates
   `health_json`/`state`, requeues tickets of hosts gone `down`, renews leases,
   reclaims expired ones, re-admits recovered hosts, and un-parks tickets of any
   class that regained capacity (`queue.unpark_ready`); `drain`/`remove`.
@@ -517,34 +517,34 @@ that block `git push`/land-like commands, ported `land_guard`);
 
 ---
 
-## 10. CLI (`foreman`)
+## 10. CLI (`hermes`)
 
-- `foreman run <playbook> --site <site> [--base-ref R] [--hosts a,b] [--dry-run]`
+- `hermes run <playbook> --site <site> [--base-ref R] [--hosts a,b] [--dry-run]`
   — create a run, seed phase 0, add the given hosts (defaulting to the local host
   for the `local` site when `--hosts` is omitted), and start the master loop. For
   every host served **in-process** (the `local` site's single box) it **also
   starts an in-process `serve_loop` per such host**, so a single
-  `foreman run --site local` without `--dry-run` actually claims and executes
+  `hermes run --site local` without `--dry-run` actually claims and executes
   tickets and drives the run to a terminal state (AC2, §13); on a distributed
-  site, remote worker boxes run their own `foreman serve` (below) instead.
-- `foreman run {pause|resume|stop} <run_id>` — apply a run control action via
+  site, remote worker boxes run their own `hermes serve` (below) instead.
+- `hermes run {pause|resume|stop} <run_id>` — apply a run control action via
   `queue.set_run_state` (§5, §9); prints the resulting `runs.state` and errors on
   an illegal transition (e.g. resume of a terminal run).
-- `foreman reduction {accept|reject} <reduction_id>` — apply the human decision via
+- `hermes reduction {accept|reject} <reduction_id>` — apply the human decision via
   `queue.accept_reduction`/`reject_reduction` (§9): transitions the reduction
   `pending → accepted`/`rejected` and settles every ticket it routed to
   `needs_human` (`→ done` on accept, `→ failed` on reject). Errors (no-op) if the
   reduction is not `pending`.
-- `foreman ticket requeue <ticket_id>` — operator requeue of a re-verify/guard-routed
+- `hermes ticket requeue <ticket_id>` — operator requeue of a re-verify/guard-routed
   `needs_human` ticket via `queue.requeue_needs_human` (§9): `needs_human → queued`
   as a fresh attempt (no `attempts` penalty).
-- `foreman serve --host <h> --site <site>` — run one host's serve loop (used on a
+- `hermes serve --host <h> --site <site>` — run one host's serve loop (used on a
   worker box / by `add_worker`).
-- `foreman crew {add|drain|remove|list} [host] --site <site>` — crew mgmt; `add`
+- `hermes crew {add|drain|remove|list} [host] --site <site>` — crew mgmt; `add`
   prints the health check result and admits only if healthy.
-- `foreman status [--run R] [--watch]` — render run/ticket/crew/lease/attention
+- `hermes status [--run R] [--watch]` — render run/ticket/crew/lease/attention
   summary from `queue.db` (pull-based, mirrors the future SPA).
-- `foreman show <ticket_id>` — envelope, result, attempts, evidence.
+- `hermes show <ticket_id>` — envelope, result, attempts, evidence.
 
 All commands are thin wrappers over the engine modules; `--dry-run` seeds +
 reports + estimates without dispatching.
@@ -569,14 +569,14 @@ reports + estimates without dispatching.
 ## 12. Testkit (mock agent) & test strategy
 
 - **`testkit/mock_agent.py`** — a fake worker invoked by `LocalSite.run_worker`
-  in tests (selected via `FOREMAN_MOCK_AGENT=1`): reads `envelope.json`,
+  in tests (selected via `HERMES_MOCK_AGENT=1`): reads `envelope.json`,
   **recomputes `payload_sha256` over the received `payload` and returns
   `contract_fail` on mismatch** (§6), otherwise per a scenario table writes a
   deterministic `result.json` (ok / contract_fail / driver_error / timeout /
   infra_failed). Lets integration tests exercise the full pipeline with **no real
   `claude`, no SSH, no Meta**.
 - **`testkit/example_playbook.py`** — `EchoPlaybook` (registered `name="example"`,
-  matching acceptance criterion 2's `foreman run example`): phases
+  matching acceptance criterion 2's `hermes run example`): phases
   `["work","reduce"]`, trivial payload/result schemas, `seed` from a canned issue
   file, `reduce` that clusters findings by a field and — when `run.config`
   requests it — returns a reduction carrying `needs_human_ticket_ids` (to exercise
@@ -611,7 +611,7 @@ accept/reject path. A "dry-run" GO/NO-GO test asserts a contract mismatch aborts
 
 1. `run_tests.sh` is green: every module unit-tested; the end-to-end integration
    test drives EchoPlaybook to `done` on `LocalSite` with the mock agent.
-2. `foreman run example --site local --dry-run` seeds + reports without
+2. `hermes run example --site local --dry-run` seeds + reports without
    dispatching; without `--dry-run` it drives a run to a terminal state locally.
 3. The no-ship guard blocks a push attempt in a worker context (asserted).
 4. A malformed envelope or result aborts with a `ContractError` and NO-GO

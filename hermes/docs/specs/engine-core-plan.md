@@ -1,13 +1,13 @@
-# Foreman engine core — implementation plan (sub-project 1)
+# Hermes engine core — implementation plan (sub-project 1)
 
-Status: **draft**. Date: 2026-07-28. Spec: `foreman/docs/specs/engine-core.md`.
+Status: **draft**. Date: 2026-07-28. Spec: `hermes/docs/specs/engine-core.md`.
 
 Vertical slices in dependency order. Each slice is independently testable, follows
 **TDD** (write the failing test first, then the code), and ends GREEN before the
 next begins. Every slice lists its deliverables, tests, and acceptance criteria.
 Engine core is **stdlib-only at runtime**; `pytest` is a dev-only dependency.
 
-Conventions: paths are under `foreman/`. "GREEN" = `scripts/run_tests.sh` passes.
+Conventions: paths are under `hermes/`. "GREEN" = `scripts/run_tests.sh` passes.
 Commit after each slice.
 
 ---
@@ -15,14 +15,14 @@ Commit after each slice.
 ## Slice 0 — Scaffold
 
 **Deliverables**
-- `.claude-plugin/plugin.json` (name `foreman`, commands glob, skills), `commands/`
-  stubs, `skills/foreman/SKILL.md` stub.
+- `.claude-plugin/plugin.json` (name `hermes`, commands glob, skills), `commands/`
+  stubs, `skills/hermes/SKILL.md` stub.
 - `engine/__init__.py`, `engine/config.py` (`resolve_home()`, env vars:
-  `FOREMAN_HOME`, `FOREMAN_HEARTBEAT_S=30`, `FOREMAN_SITE=local`, `FOREMAN_BIND`,
+  `HERMES_HOME`, `HERMES_HEARTBEAT_S=30`, `HERMES_SITE=local`, `HERMES_BIND`,
   networked-mount guard), `pyproject.toml` (dev-deps: pytest), `scripts/run_tests.sh`.
 - `tests/` package skeleton.
 
-**Tests** — `config` resolves default `~/.foreman`, honors `FOREMAN_HOME`, and
+**Tests** — `config` resolves default `~/.hermes`, honors `HERMES_HOME`, and
 rejects a networked-mount path with a clear error.
 
 **Acceptance** — `run_tests.sh` runs (0 tests failing); `config` tests green.
@@ -77,7 +77,7 @@ returns last n; `data` round-trips JSON.
 `guarantees_no_ship`, `provision` = git worktree; `run_worker` deferred to
 Slice 7), `testkit/example_playbook.py` (`EchoPlaybook`),
 `testkit/mock_agent.py` (scenario-table fake worker), `testkit/fixtures.py`
-(temp `FOREMAN_HOME`, canned issue file).
+(temp `HERMES_HOME`, canned issue file).
 
 **Tests** — registry resolves playbook/site by name; `HealthReport.ok` is True iff
 all checks pass; `LocalSite.health` reports failing checks individually;
@@ -154,7 +154,7 @@ un-parks a waiting ticket.
 `parse_result`), `transport.py` (`local_transport`, `ssh_transport`,
 `serve_once_for_host` — computes `payload_sha256` over the payload's canonical JSON
 and stamps it into the envelope, §6), wire `LocalSite.run_worker` to
-`local_transport` (mock agent when `FOREMAN_MOCK_AGENT=1`); `mock_agent` recomputes
+`local_transport` (mock agent when `HERMES_MOCK_AGENT=1`); `mock_agent` recomputes
 `payload_sha256` and returns `contract_fail` on mismatch.
 
 **Tests** — `build_argv` sets goal + permission mode + timeout wrapper, includes
@@ -227,7 +227,7 @@ with zero Meta/SSH/real-claude dependency.
 
 **Deliverables** — `cli.py` + `commands/` (`run`, `run {pause|resume|stop}`,
 `reduction {accept|reject}`, `ticket requeue`, `serve`, `crew`, `status`, `show`,
-`--dry-run`), console entrypoint `foreman`; the control/reduction/requeue
+`--dry-run`), console entrypoint `hermes`; the control/reduction/requeue
 subcommands are thin wrappers over `queue.set_run_state`/`accept_reduction`/
 `reject_reduction`/`requeue_needs_human` (§9/§10).
 
@@ -239,7 +239,7 @@ returns a `needs_human` ticket to `queued`; `crew add` prints health +
 admits/refuses; `status` renders run/ticket/crew/lease/attention from `queue.db`;
 `show` prints envelope/result/attempts.
 
-**Acceptance** — spec §10 commands work against a temp `FOREMAN_HOME`.
+**Acceptance** — spec §10 commands work against a temp `HERMES_HOME`.
 
 ---
 

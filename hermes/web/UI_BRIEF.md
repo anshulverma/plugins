@@ -1,6 +1,6 @@
-# Foreman control-plane — UI brief
+# Hermes control-plane — UI brief
 
-A design brief for the Foreman web control plane (`foreman/web/`, a React + Vite +
+A design brief for the Hermes web control plane (`hermes/web/`, a React + Vite +
 TypeScript SPA over the engine's JSON API).
 
 **How to use this:** paste the "Brief" section below into Claude Design (or any
@@ -15,11 +15,11 @@ Meta-flavored example (`fbcode//…`, `devgpu042`). Strip those for a neutral de
 
 ## Brief
 
-Design a web control plane called "Foreman" — a dashboard for orchestrating fleets
+Design a web control plane called "Hermes" — a dashboard for orchestrating fleets
 of headless Claude Code agents that run work across many remote hosts.
 
 ### Product context
-Foreman is a generic engine that fans "tickets" (units of work) across a "crew"
+Hermes is a generic engine that fans "tickets" (units of work) across a "crew"
 (a pool of remote hosts, each running a headless AI agent). Different job types
 are defined by "playbooks":
   - mechanic  — diagnoses and fixes large batches of failing/flaky tests

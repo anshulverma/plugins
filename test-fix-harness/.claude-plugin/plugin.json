@@ -1,0 +1,24 @@
+{
+  "name": "test-fix-harness",
+  "version": "0.1.0",
+  "description": "Distributed test-fix harness. Fans a dashboard of failing/flaky/skipping tests across on-demand devserver workers running headless Claude Code, coordinated by a master-owned SQLite queue over SSH. Two-phase pipeline: diagnose each test (testx-debug) -> dedup root causes -> fix one per cause. Nothing auto-lands (workers stop at a published diff). GPU/RE lease scheduler with per-test routing. Commands: /fix-my-tests (run the pipeline), /fix-my-tests:status (dashboard).",
+  "homepage": "https://www.internalfb.com/intern/wiki/",
+  "keywords": [
+    "tests",
+    "flaky",
+    "test-fix",
+    "distributed",
+    "orchestrator",
+    "multi-agent",
+    "sqlite-queue",
+    "ssh",
+    "testx-debug",
+    "gpu",
+    "remote-execution",
+    "dedup",
+    "master-worker"
+  ],
+  "skills": [
+    "./skills/"
+  ]
+}
