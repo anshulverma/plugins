@@ -393,16 +393,20 @@ Ordering is adjustable; the engine core must land first.
 
 ## 14. Open questions & spikes
 
-- **SPIKE (blocking, do first): headless slash-command invocation.** The entire
-  driver model depends on being able to run a named slash command (e.g.
-  `/mp-diagnose …`) in a fully non-interactive `claude -p` / Agent-SDK run, to
-  completion, with the right permission mode + turn cap + structured output. This
-  is **currently unconfirmed** (Agent SDK / `claude -p` docs). Prove it end-to-end
-  with one driver on the `local` site before building `site.run_worker`. If a
-  slash command can't be passed headlessly, the fallback is to inline the skill's
-  content into the worker prompt (drivers become prompt-fragments, not commands) —
-  the `Driver` abstraction absorbs either outcome. `/goal`'s multi-turn autonomous
-  behavior in particular must be verified under headless execution.
+- **SPIKE — headless slash-command invocation: RESOLVED (2026-07-28).** Verified
+  on the `local` box that a named slash command runs in a fully non-interactive
+  `claude -p` run and drives real work to completion: `claude -p "/goal <multi-step
+  condition>" --permission-mode bypassPermissions` executed the goal and produced
+  the correct side effects (exit 0). Design consequences now baked in:
+  - Workers invoke `claude -p "/goal <condition>"` (+ methodology driver) with
+    **`--permission-mode bypassPermissions`** so the agent can act freely; the
+    no-ship guard (§11) — not the permission prompt — is what keeps it safe.
+  - **This build has no `--max-turns` flag**, so `Driver.max_turns` is enforced by
+    a wall-clock `timeout` wrapper at the transport layer (ported from the
+    original `run_unit.sh`), not a CLI flag.
+  - Fallback if a future driver can't be passed as a slash command: inline the
+    skill's content into the worker prompt (drivers become prompt-fragments) — the
+    `Driver` abstraction absorbs either outcome.
 - FastAPI is an added dependency for `server/` — acceptable, given the engine
   core stays stdlib-only? (Assumed yes per the "Full SPA" choice.)
 - `meta` site adapter: ship it in this repo as the reference, or keep it in a
