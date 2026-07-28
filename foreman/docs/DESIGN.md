@@ -104,6 +104,11 @@ class Playbook(Protocol):
     def payload_schema(self, phase: str) -> dict: ...   # JSON-schema subset
     def result_schema(self, phase: str) -> dict: ...
     def driver(self, phase: str) -> Driver: ...          # which Claude command drives it
+    def verify(self, run, ticket, result, site) -> bool: ...  # master-side independent
+                             #   re-verify of a goal_met/ok result (§3, §11): re-checks the
+                             #   worker's success claim through the site (not just schema
+                             #   validation). True ⇒ admit to reducing/done; False ⇒ route to
+                             #   needs_human. Default True for phases with nothing to re-check.
     def reduce(self, run, phase, findings, site) -> list[Reduction]: ...
     def next_phase(self, run) -> str | None: ...         # phase advancement
     def is_done(self, run) -> bool: ...                  # definition-of-done
@@ -117,8 +122,59 @@ class Site(Protocol):
     def run_worker(self, host, envelope) -> Result: ...  # the remote-exec recipe
     def resource_classes(self) -> list[str]: ...         # e.g. ["cpu","gpu"]
     def submit_for_review(self, host, change) -> str: ... # returns a review URL; never lands
-    def issue_source(self, query) -> list[dict]: ...      # e.g. failing-test dashboard
+    def issue_source(self, query: IssueQuery) -> list[Issue]: ...  # e.g. failing-test dashboard
+    def guarantees_no_ship(self) -> bool: ...            # can this site install the no-ship guard? (§6, §11)
 ```
+
+The value types the `Site` interface returns/accepts (dataclasses; `HealthReport`
+is defined in §7):
+
+```python
+# engine/site.py (cont.)
+
+@dataclass
+class Result:                 # returned by Site.run_worker
+    outcome: str             # "ok" | "driver_failed" | "infra_failed"
+    termination_reason: str  # "goal_met" | "contract_fail" | "driver_error"
+                             #   | "timeout" | "transport_error"
+    result_ref: str | None   # handle to the worker's emitted result doc (validated
+                             #   against the phase's done_contract); None if none produced
+    error_summary: str | None
+    started_at: float        # epoch seconds
+    ended_at: float          # epoch seconds
+
+@dataclass
+class IssueQuery:            # argument to Site.issue_source
+    kind: str               # which issue class to fetch, e.g. "failing_test"
+    filters: dict           # site-documented key/value narrowing (default {})
+    limit: int              # max issues to return (default 100)
+
+@dataclass
+class Issue:                 # one item returned by Site.issue_source
+    id: str                 # site-stable identifier (e.g. a failing-test name)
+    kind: str               # echoes IssueQuery.kind, e.g. "failing_test" | "sev"
+    title: str              # human-readable summary
+    ref: str                # URL or path back to the source of record
+    data: dict              # site-specific extras (owner, signal, first-seen, …)
+```
+
+**`termination_reason` → `outcome` → disposition** (the mapping is total over the
+`termination_reason` enum; §5 consumes `outcome`):
+
+| `termination_reason` | `outcome` | Disposition (§5) |
+|----------------------|-----------|------------------|
+| `goal_met` | `ok` | Ticket → `reducing`/`done`, **subject to master re-verify** (§11). |
+| `contract_fail` | `driver_failed` | **Terminal, no retry** (`failed`). |
+| `driver_error` | `driver_failed` | **Terminal, no retry** (`failed`). |
+| `timeout` | `driver_failed` | **Terminal, no retry** (`failed`). A `timeout_s` blow-out is treated as a driver failure, not infra: re-running the same driver on the same input under the same budget is not expected to change the outcome, so it does **not** consume an infra retry. |
+| `transport_error` | `infra_failed` | **Retried up to 3×** (§5); the 4th → `failed`. |
+
+**Master re-verify override:** an `outcome == "ok"` / `goal_met` result whose
+independent master-side re-verify (§11) **contradicts** the worker's success claim
+is not admitted as done. The ticket is routed to **`needs_human`** (an integrity
+signal — the worker asserted success the master could not confirm — that warrants
+inspection rather than a silent retry). This is the only path by which an `ok`
+result does not reach `done`.
 
 Both interfaces are small on purpose: a new site or playbook is one file
 implementing a handful of methods, and each is unit-testable in isolation.
@@ -187,10 +243,49 @@ additive-only migrations (ported discipline from `schema.sql`).
 - `findings` — generic JSON-doc store: run_id, ticket_id, kind, json (a
   playbook interprets its own `kind`s — root_cause, metric_sample, …).
 - `reductions` — master-side aggregate output: run_id, kind, json, review_state.
+  `review_state` ∈ `pending · accepted · rejected · superseded`: `pending` (newly
+  emitted by `reduce`, awaiting a human/master decision — raises an attention
+  banner when the reduction is what routed a ticket to `needs_human`); `accepted`
+  (approved/actioned); `rejected` (dismissed); `superseded` (replaced by a newer
+  reduction over the same findings — reductions are never deleted, mirroring the
+  append-only discipline).
 
 Ticket states: `queued · dispatched · running · reducing · done · parked ·
-failed · needs_human`. Every execution outcome is terminal; retries increment
-only on **infra** failure (ported invariant, max 3).
+failed · needs_human`. **Two failure classes, resolved distinctly** by
+`Result.outcome` (§3):
+
+- **Driver-reported (non-infra) failure** (`Result.outcome == "driver_failed"` —
+  the driver ran to completion but its result fails `done_contract` validation, or
+  the driver explicitly reports it cannot meet the goal): **terminal on the first
+  occurrence.** The ticket goes `failed` immediately with **no retry**, because
+  re-running the same driver on the same input is not expected to change the
+  outcome. `attempts` is **not** incremented for retry purposes here.
+- **Infra failure** (`Result.outcome == "infra_failed"` — a worker/host infra
+  error surfaced by a completed attempt): **retried up to 3 times** (the ported
+  invariant); `attempts` increments only on this class, and the 4th infra failure
+  sends the ticket to `failed`.
+
+(A host lost mid-run and reclaimed via the heartbeat/lease path — §7, §9 — is a
+*no-penalty requeue*, distinct from the two classes above: it does not increment
+`attempts`, since the attempt never produced a `Result`.)
+
+`failed` and `needs_human` **both** raise an attention banner (each demands human
+notice). `needs_human` is reserved for tickets a playbook's `reduce`/`is_done`
+logic or a tripped guard (§11) flags for a human decision, whereas `failed`
+signals exhaustion of automated options. **Resolving a `needs_human` ticket:**
+when the ticket was routed there **by a reduction**, the human decision is made
+by accepting/rejecting that reduction (§10) — **accept** transitions it
+`needs_human → done` (the reduction's conclusion is affirmed and actioned; any
+follow-on work is seeded as *new* tickets, never by reopening this one),
+**reject** transitions it `needs_human → failed` (no automated conclusion
+remains). When the ticket was routed there by the §3 master re-verify override or
+a tripped guard (no reduction to decide), an operator clears it with a control
+action (§10: `requeue` re-queues it as a fresh attempt, or the banner is
+`ack`'d). A ticket's `needs_human` banner is an attribute of the `needs_human`
+state and clears the instant the ticket leaves it; the `failed` banner that a
+reject produces is the distinct terminal signal (ackable, §10), not the
+`needs_human` banner re-raised. `parked` means blocked on a scarce lease
+(§9) and is re-queued automatically when a lease frees.
 
 Playbook-specific structure never grows the core schema — it lives as namespaced
 `findings`/`reductions` documents. This keeps the engine truly generic (goal #2).
@@ -203,13 +298,27 @@ The strict `additionalProperties:false` discipline from `contracts.py` is
 preserved (dependency-free validator ported verbatim). Contracts are layered:
 
 - **Engine envelope** (fixed shell): `ticket_id, run_id, phase, resource_req,
-  base_ref, payload_sha256, timeout_s, site_context, goal, driver`.
+  base_ref, payload_sha256, timeout_s, site_context, goal_envelope`. `timeout_s`
+  is the single wall-clock budget for the worker run (default 3600 s, capped per
+  deployment), enforced by the transport's `timeout` wrapper (§14); it is the
+  only timeout in the system.
 - **Playbook sub-schemas**: the playbook contributes the `payload` (inside the
   envelope) and the `result` schema for each phase. The engine validates both
   the envelope and the playbook sub-schemas on dispatch and on result.
-- **GoalEnvelope** (new, §8): `goal` (definition-of-done text), `driver`
-  (`{command, args}`), `done_contract` (the required result schema),
-  `guardrails` (no-ship, budget/turn caps, timeout).
+- **GoalEnvelope** (new, §8): the value of the envelope's `goal_envelope` field.
+  Fields: `goal` (definition-of-done text, set per ticket by the playbook),
+  `driver` (a `Driver`, §8), `done_contract` (the required result schema — the
+  playbook's `result_schema(phase)`), `guardrails` — a concrete object
+  `{"no_ship": bool}` (default `true`) asserting the no-ship posture the worker
+  must run under (submit-only identity + PATH shims, §11). No-ship is enforced at
+  two levels: (a) **site-level capability** — the master rejects an envelope with
+  `no_ship:true` at dispatch if `not site.guarantees_no_ship()` (§3); (b)
+  **per-host guarantee** — only crew members whose health probe reported
+  `guard_installed == True` are admitted (§7), and `guard_installed == False` is
+  always admission-blocking (§11), so an `no_ship:true` envelope can only ever
+  target a host on which the guard was proven installed. **No turn/token/$ budget lives in
+  `guardrails`:** this build has no `--max-turns` flag (§14), so the sole worker
+  budget is the wall-clock `timeout_s` above.
 
 A contract mismatch in either direction is a hard error (the dry-run NO-GO gate
 is ported).
@@ -237,18 +346,33 @@ class HealthReport:
     agent_ok: bool           # headless Claude present + correct version
     auth_ok: bool            # `claude -p ping` authenticates
     workspace_ready: bool    # checkout at base_ref, clean
-    guard_installed: bool    # no-ship shims earlier on PATH (§12)
+    guard_installed: bool    # no-ship shims earlier on PATH (§11)
     resources: dict          # {"gpu": 8, "cpu": 96}
     latency_ms: int
     checks: list[Check]      # named sub-checks with pass/fail + detail
     @property
-    def ok(self) -> bool: ...
+    def ok(self) -> bool: ...  # True iff every Check in `checks` passed
+
+@dataclass
+class Check:
+    name: str                # stable check id, e.g. "reachable", "guard_installed"
+    ok: bool                 # pass/fail
+    detail: str              # human-readable reason (shown when it fails)
 ```
 
-The daemon re-probes health on a heartbeat; a member that fails goes `down`,
-its in-flight ticket is requeued (transport failure ⇒ no attempt penalty, ported
-semantics). This replaces the original's stubbed `verify_worker.sh` /
-`bootstrap_worker.sh` with a real, per-site, structured probe.
+`checks` is the source of truth for admission: `ok` is `True` iff **every** entry
+in `checks` passes. The five named booleans (`reachable`, `agent_ok`, `auth_ok`,
+`workspace_ready`, `guard_installed`) are **required, convenience mirrors** of the
+same-named `Check` entries every site must emit; a site may add further checks
+(which also gate `ok`). `guard_installed == False` is always admission-blocking
+(§11).
+
+The daemon re-probes health on a heartbeat (default every 30 s, configurable via
+`FOREMAN_HEARTBEAT_S`); a member that fails a probe goes `down`, its in-flight
+ticket is requeued (transport failure ⇒ no attempt penalty, ported semantics),
+and the member is re-admitted automatically once a later probe passes. This
+replaces the original's stubbed `verify_worker.sh` / `bootstrap_worker.sh` with a
+real, per-site, structured probe.
 
 ---
 
@@ -273,11 +397,14 @@ definition-of-done. Sub-commands foreman uses:
 ```python
 @dataclass
 class Driver:
-    goal: str             # the completion condition -> /goal <goal>
     command: str | None   # methodology driver, e.g. "/auto-research", "/mp-diagnose"
     args: dict            # command-specific
-    max_turns: int | None # autonomous-run cap
     loop: str | None      # optional /loop interval, e.g. "10m", for polling drivers
+    # NB: no turn cap here. This build has no --max-turns flag (§14), so the sole
+    # worker budget is the envelope's wall-clock timeout_s (§6); a per-phase turn
+    # limit would be unenforceable and is deliberately omitted.
+    # NB: the completion condition (`goal`) is NOT here — it is per-ticket and
+    # lives on the GoalEnvelope (§6); a Driver is per-phase and goal-agnostic.
 ```
 
 So `/goal` (completion condition) and the methodology command **compose**: e.g.
@@ -292,6 +419,10 @@ means foreman gets Claude's best autonomous behavior for free and stays out of
 the business of re-implementing methodology in prompt text.
 
 **Driver-per-phase, chosen by the playbook** (`Playbook.driver(phase)`). The
+per-ticket completion condition (`goal`) is set separately by the playbook at
+seed / phase entry from that phase's definition-of-done; the engine then
+assembles the ticket's `goal`, the phase `Driver`, the phase `result_schema`
+(as `done_contract`), and the site + run `guardrails` into the GoalEnvelope. The
 engine treats `driver.command` as **opaque** — the catalog below is a starting
 point, configurable per deployment, and can grow without engine changes.
 
@@ -328,7 +459,15 @@ without engine changes.
 Generic resource leases (not GPU-specific): a ticket declares `resource_req`
 (a resource class the site defines, e.g. `cpu`/`gpu`); the scheduler leases a
 matching, healthy crew member. Scarce classes sit behind a semaphore; overflow
-**parks** (ported behavior). GPU/RE specifics live entirely in the `meta` site's
+**parks** (ported behavior). A lease carries a TTL (`ttl_s`, default 1800 s) and
+is renewed **on the same 30 s crew-health heartbeat cycle** (§7,
+`FOREMAN_HEARTBEAT_S`) while its ticket runs — there is **no** separate lease
+timer; the daemon renews every live lease as part of each heartbeat sweep. `ttl_s`
+(1800 s) is deliberately ≫ the 30 s heartbeat so a lease survives a few missed
+sweeps before expiring. A lease whose holder is unreachable past `expires_at`
+(i.e. renewal has stopped for a full TTL) is reclaimed and its ticket requeued
+(transport failure ⇒ no attempt penalty), which bounds leaks from a crashed
+master or worker. GPU/RE specifics live entirely in the `meta` site's
 `resource_classes()` — the engine only knows "class name + count + semaphore."
 
 ---
@@ -336,9 +475,54 @@ matching, healthy crew member. Scarce classes sit behind a semaphore; overflow
 ## 10. Control plane & status (goals #3, #5)
 
 - **API** (`server/`, FastAPI): REST for runs/tickets/crew/health/leases/
-  findings + a **websocket** feed backed by the `events` table. Control actions:
-  start/resume/stop run, add/drain/remove host, requeue/reprioritize/park ticket,
-  ack banner.
+  findings/reductions + a **websocket** feed backed by the `events` table. Control
+  actions: start/resume/stop run, add/drain/remove host,
+  requeue/reprioritize/park ticket, **accept/reject reduction**
+  (`POST /reductions/{id}/accept` · `POST /reductions/{id}/reject`, transitioning
+  `review_state` `pending → accepted`/`rejected` (§5) and emitting a
+  `reduction_accepted`/`reduction_rejected` event; only a `pending` reduction is
+  transitionable — an accept/reject on an `accepted`/`rejected`/`superseded`
+  reduction ⇒ `409`; and accepting/rejecting a reduction that routed one or more
+  tickets to `needs_human` (§5) also transitions each such ticket out of
+  `needs_human` — `needs_human → done` on accept, `needs_human → failed` on
+  reject — clearing that ticket's `needs_human` attention banner (the ticket is no
+  longer `needs_human`, so §5's blanket banner rule no longer applies to it; a
+  reject's resulting `failed` banner is the distinct terminal signal, not the
+  cleared banner re-raised)), ack banner.
+- **Auth & binding (required — these actions are destructive and workers run
+  `bypassPermissions`).** The server **binds to `127.0.0.1` by default**
+  (`FOREMAN_BIND`, overridable to `0.0.0.0` only behind a trusted proxy). A
+  **bearer token** (generated on first `foreman serve`, stored 0600 at
+  `$FOREMAN_HOME/api_token`, rotatable via `foreman serve --rotate-token`) is
+  **required on every mutating request** (`POST`/`DELETE`, i.e. all control
+  actions above) and on the **websocket handshake** (`?token=` or
+  `Authorization` header). Read-only `GET` endpoints are token-gated too whenever
+  the bind address is non-loopback. A missing/invalid token ⇒ `401`; the websocket
+  closes with code `4401`. Requests without a valid token can never mutate state.
+- **Token acquisition per actor.** The **CLI** reads the token directly from
+  `$FOREMAN_HOME/api_token` (same host, 0600 file). The **SPA is served by the
+  same FastAPI server** and, being a browser app, has no filesystem access, so it
+  obtains the token as follows:
+  - **Loopback default (`127.0.0.1`):** the server injects the current token into
+    the served `index.html` as a bootstrap value; the SPA holds it **in memory
+    only** (never `localStorage`/cookies, to avoid on-disk persistence) for the
+    tab's lifetime and sends it on every request/websocket handshake. Injection is
+    safe here because reaching the page already requires local access to the
+    loopback port.
+  - **Non-loopback (`0.0.0.0` behind a trusted proxy):** bootstrap injection is
+    **disabled**; the SPA requires an explicit **login step** where the operator
+    pastes the token (or the trusted proxy supplies it), again held in memory only.
+- **Token lifecycle.** The token is a single shared secret with **no TTL** (it
+  does not expire on its own) and **no per-actor scoping/permissions** — every
+  holder has full control-plane authority. `foreman serve --rotate-token`
+  generates a new token and **immediately invalidates all in-flight sessions**:
+  subsequent requests bearing the old token get `401`, and every open websocket
+  authenticated with it is closed with code `4401` (clients must re-fetch/re-enter
+  the new token; the SPA reloads to pick up a freshly injected value). **0.0.0.0
+  caveat:** the single-shared-token, no-per-actor-permission model is acceptable
+  only for the loopback single-operator default; a non-loopback deployment must sit
+  behind a trusted proxy that supplies its own authentication/authorization, as
+  per-actor tokens and scoped permissions are out of scope for this build.
 - **UI** (`web/`, React/Vite SPA): generated from `web/UI_BRIEF.md` by Claude
   Design. Screens: run overview, ticket kanban, ticket drill-down, crew panel
   (health + add-host modal), findings, live feed; light+dark; attention banners.
@@ -352,7 +536,10 @@ matching, healthy crew member. Scarce classes sit behind a semaphore; overflow
 Enforced **by construction**, not prompt trust: the site installs PATH shims that
 shadow land/push/submit-and-land on workers (ported `land_guard.sh`), workers use
 a submit-only identity, and the master re-verifies any "green"/"success" claim
-independently. `site.submit_for_review` returns a review URL and can never land.
+independently via `Playbook.verify(run, ticket, result, site)` (§3) — which
+re-checks the claim through the site rather than trusting the worker's assertion or
+a mere schema-valid `result_ref`, and whose contradicting verdict routes the ticket
+to `needs_human` (§3). `site.submit_for_review` returns a review URL and can never land.
 `guard_installed` is a health-gate check (§7).
 
 ---
@@ -401,14 +588,18 @@ Ordering is adjustable; the engine core must land first.
   - Workers invoke `claude -p "/goal <condition>"` (+ methodology driver) with
     **`--permission-mode bypassPermissions`** so the agent can act freely; the
     no-ship guard (§11) — not the permission prompt — is what keeps it safe.
-  - **This build has no `--max-turns` flag**, so `Driver.max_turns` is enforced by
-    a wall-clock `timeout` wrapper at the transport layer (ported from the
-    original `run_unit.sh`), not a CLI flag.
+  - **This build has no `--max-turns` flag**, so there is no turn-based limiting at
+    all; the sole worker budget is the envelope's wall-clock `timeout_s` (§6),
+    enforced by a `timeout` wrapper at the transport layer (ported from the
+    original `run_unit.sh`). `Driver` therefore carries no `max_turns` field.
   - Fallback if a future driver can't be passed as a slash command: inline the
     skill's content into the worker prompt (drivers become prompt-fragments) — the
     `Driver` abstraction absorbs either outcome.
-- FastAPI is an added dependency for `server/` — acceptable, given the engine
-  core stays stdlib-only? (Assumed yes per the "Full SPA" choice.)
-- `meta` site adapter: ship it in this repo as the reference, or keep it in a
-  separate private location and load via config? (Leaning: reference impl here,
-  loaded via `FOREMAN_SITE=meta`.)
+- **RESOLVED — FastAPI dependency (2026-07-28).** `server/` depends on FastAPI;
+  the engine **core** (`engine/`) stays strictly stdlib-only, so a deployment
+  that only needs the CLI never imports FastAPI. The dependency is isolated to
+  the control-plane server (§4, §10).
+- **RESOLVED — `meta` site location (2026-07-28).** The `meta` adapter ships **in
+  this repo** as the reference implementation under `foreman-site-meta/` (§4) and
+  is selected at deploy time via `FOREMAN_SITE=meta` (default `local`). No
+  separate private location.
