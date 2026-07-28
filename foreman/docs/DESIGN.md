@@ -255,19 +255,36 @@ semantics). This replaces the original's stubbed `verify_worker.sh` /
 ## 8. The driver model — making best use of Claude (`/goal`, `/loop`, …)
 
 **Foreman is a goal dispatcher, not a prompt templater.** Instead of shipping a
-bespoke prompt, foreman hands each crew member a **GoalEnvelope** and a
-**driver** — a high-level Claude Code command/skill that pursues the goal
-autonomously and to completion. The worker prompt becomes thin: set up the goal +
-invoke the driver + emit the strict result contract.
+bespoke prompt, foreman hands each crew member a **GoalEnvelope**: a **completion
+condition** (delivered via `/goal <condition>`) plus a **methodology driver** —
+a high-level Claude Code command/skill that pursues that condition autonomously.
+The worker prompt becomes thin: set the goal, invoke the driver, emit the strict
+result contract.
+
+`/goal` is the backbone of this model. It sets a **persistent completion
+condition** and lets Claude work **autonomously across multiple turns until a
+secondary fast model verifies the goal is met** — which is precisely a ticket's
+definition-of-done. Sub-commands foreman uses:
+
+- `/goal <condition>` — start the ticket's autonomous pursuit.
+- `/goal` — poll status (is the condition met yet?).
+- `/goal clear` — stop (on requeue, park, or abort).
 
 ```python
 @dataclass
 class Driver:
-    command: str          # e.g. "/goal", "/auto-research", "/mp-diagnose"
+    goal: str             # the completion condition -> /goal <goal>
+    command: str | None   # methodology driver, e.g. "/auto-research", "/mp-diagnose"
     args: dict            # command-specific
     max_turns: int | None # autonomous-run cap
     loop: str | None      # optional /loop interval, e.g. "10m", for polling drivers
 ```
+
+So `/goal` (completion condition) and the methodology command **compose**: e.g.
+set `/goal "test X is green and a diff is published"`, then kick off with
+`/mp-diagnose`/`/ci-autopilot`. Two layers of verification result — `/goal`'s
+worker-side verifier, and foreman's independent master-side re-verify (§11) — and
+the no-trust invariant holds.
 
 **Why:** these commands already encode disciplined, autonomous loops (diagnose →
 reproduce → fix → verify; experiment → measure → keep/discard). Reusing them
@@ -285,19 +302,24 @@ point, configurable per deployment, and can grow without engine changes.
 | rigger | optimize | `/auto-research` (experiment loop vs. a metric) | confirmed |
 | medic | rca | `/divine` or `/mp-diagnose` (multi-phase RCA) | confirmed |
 
-**Confirmed autonomous drivers** available in this environment: `/auto-research`,
-`/divine`, `/ci-autopilot`, `/ci-patrol`, `/mp-diagnose`, `/testx-debug`.
+**Confirmed drivers** available in this environment:
 
-`/loop` (confirmed) runs a prompt/command on a **recurring interval** and is
-*interactive, not autonomous-to-completion*. So `/loop` is a **master-side**
-tool (re-probe crew health, watch a run), **not** a worker-completion driver.
-`Driver.loop` remains available for polling-style workers, but the primary
-worker drivers are the autonomous ones above.
+- **Completion condition:** `/goal` (backbone; §above).
+- **Methodology loops:** `/auto-research` (experiment vs. a metric), `/divine`
+  (multi-phase pipeline), `/ci-autopilot` + `/ci-patrol` (drive CI to green),
+  `/mp-diagnose` + `/testx-debug` (disciplined diagnosis), `/auto-plan`
+  (autonomous planning with **hardening loops** — for planning-heavy phases, or
+  master-side to harden a run's plan before seeding tickets).
+- **Interval:** `/loop`.
 
-> ⚠️ **`/goal` is unconfirmed** — it is not a documented built-in and was not
-> found in the installed command/skill set, so it is likely a custom command in
-> your environment. The design therefore does **not depend** on `/goal`; it is
-> supported only as one more opaque `driver.command` value if/when present.
+`/loop` runs a prompt/command on a **recurring interval** and is *interactive,
+not autonomous-to-completion*. So `/loop` is a **master-side** tool (re-probe
+crew health, watch a run), **not** a worker-completion driver — that role belongs
+to `/goal` + a methodology loop. `Driver.loop` remains available for
+polling-style workers.
+
+The engine treats every `driver.command` as opaque, so this catalog can grow
+without engine changes.
 
 ---
 
@@ -379,9 +401,8 @@ Ordering is adjustable; the engine core must land first.
   with one driver on the `local` site before building `site.run_worker`. If a
   slash command can't be passed headlessly, the fallback is to inline the skill's
   content into the worker prompt (drivers become prompt-fragments, not commands) —
-  the `Driver` abstraction absorbs either outcome.
-- `/goal` availability/semantics — treat as an optional custom command; do not
-  depend on it (see §8).
+  the `Driver` abstraction absorbs either outcome. `/goal`'s multi-turn autonomous
+  behavior in particular must be verified under headless execution.
 - FastAPI is an added dependency for `server/` — acceptable, given the engine
   core stays stdlib-only? (Assumed yes per the "Full SPA" choice.)
 - `meta` site adapter: ship it in this repo as the reference, or keep it in a
