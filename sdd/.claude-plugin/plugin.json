@@ -1,0 +1,24 @@
+{
+  "name": "sdd",
+  "version": "0.1.0",
+  "description": "Spec-driven development: take a spec (or a spec idea) all the way to shipped, reviewed code. Hardens the spec to convergence, writes and hardens a TDD implementation plan, then executes it slice-by-slice with fresh implementer subagents, per-slice spec+quality review with fix loops, a resumable progress ledger, and periodic architecture-coherence checkpoints. Composes the auto-plan hardening loop with subagent-driven development and TDD into one repeatable pipeline.",
+  "author": {
+    "name": "Anshul Verma",
+    "email": "anshulverma@meta.com"
+  },
+  "keywords": [
+    "spec-driven-development",
+    "sdd",
+    "planning",
+    "auto-plan",
+    "hardening",
+    "subagent-driven-development",
+    "tdd",
+    "code-review",
+    "orchestration",
+    "implementation-plan"
+  ],
+  "commands": [
+    "./commands/"
+  ]
+}
