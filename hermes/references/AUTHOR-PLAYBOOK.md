@@ -40,9 +40,13 @@ and re-export in `playbooks/<name>/__init__.py` (mirror `agents/claude/__init__.
 2. **TDD**: write failing unit tests first (mirror `tests/unit/test_dexter_playbook.py`), then
    implement `playbooks/<name>/playbook.py`. Keep code self-contained — no doc/spec references
    in comments.
-3. **Register via discovery, not an engine edit**: set `HERMES_PLAYBOOK_MODULES=playbooks.<name>`
-   (dynamic discovery imports it for its `register()` side-effect). Never edit
-   `engine/cli.py`'s loader for a custom playbook.
+3. **Register via discovery, not an engine edit** (never edit `engine/cli.py`'s loader):
+   - In-repo playbook: `HERMES_PLAYBOOK_MODULES=playbooks.<name>` (dynamic discovery imports
+     it for its `register()` side-effect).
+   - **Private / host-only playbook:** drop the module in `$HERMES_HOME/local/` (default
+     `~/.hermes/local/`) — Hermes auto-discovers it with NO env vars, and it lives outside the
+     shared repo (never committed). `_`-prefixed files are skipped. Override the dir with
+     `HERMES_LOCAL_DIR`. This is the way to keep internal/infra-specific code off the repo.
 4. **Verify**:
    ```
    hermes doctor
