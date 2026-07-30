@@ -1,0 +1,23 @@
+{
+  "name": "hermes",
+  "version": "0.1.0",
+  "description": "Author and run custom Hermes playbooks. Scaffolds a new playbook adapter from a plain-English description of the job (implementing the Playbook protocol with TDD), registers it via dynamic discovery (no engine edit), verifies it with a dry run, and kicks it off across a crew. Hermes is the standalone engine for multi-agent work across a fleet; this plugin is the authoring front-end for its playbook extension axis.",
+  "author": {
+    "name": "Anshul Verma",
+    "email": "anshulverma@meta.com"
+  },
+  "keywords": [
+    "hermes",
+    "playbook",
+    "multi-agent",
+    "fleet",
+    "orchestration",
+    "scaffold",
+    "extension",
+    "adapter",
+    "authoring"
+  ],
+  "commands": [
+    "./commands/"
+  ]
+}
