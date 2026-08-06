@@ -69,6 +69,8 @@ Write the question as a `question` node; enumerate candidate causes as `hypothes
 When every hypothesis has a verdict and the accounting reconciles, write `results/CONCLUSION.md`: localized cause, evidence chain (job IDs), and what is now known *not* to be the cause. Render the final graph. **This is a milestone, not completion** — check the goal: if it was understand-only, go to Phase 6. Otherwise continue to Phase 5; the investigation stays `IN PROGRESS`.
 
 ### Phase 5 — Drive to the goal (fix + verify) — skip ONLY if the goal was understand-only
+
+`/dexter:solve` runs this phase; `/dexter:investigate` is the same loop with this phase removed, and stops at the Phase 4 conclusion plus a *recommended* fix.
 The fix is not "separate work" — it is the rest of *this* investigation, run with the same rigor.
 1. **Design candidate fixes** from the confirmed cause; if several, rank by expected impact × cost and pick the highest-leverage one. Each candidate is a **hypothesis**: "change X will move goal-metric M by ~Y."
 2. **Implement** the fix (cheapest feedback loop first — a local repro / small config / one knob before a full remote run).
