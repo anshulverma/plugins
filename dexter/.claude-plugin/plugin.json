@@ -16,8 +16,5 @@
     "performance",
     "knowledge-base",
     "detective"
-  ],
-  "commands": [
-    "./commands/"
   ]
 }
