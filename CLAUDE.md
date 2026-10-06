@@ -70,4 +70,4 @@ python3 dexter/scripts/kg.py "$INV" node --id H1 --type hypothesis --text "..."
 python3 dexter/scripts/kg.py "$INV" show
 ```
 
-Adding a plugin: create `<name>/.claude-plugin/plugin.json` (with a `commands` glob), a `commands/` dir, and symlink it into `~/.claude/plugins/local/<name>`.
+Adding a plugin: create `<name>/.claude-plugin/plugin.json`, a `commands/` dir (auto-discovered; no `commands` key needed in the manifest), and symlink it into `~/.claude/plugins/local/<name>`.

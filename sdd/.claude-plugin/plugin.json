@@ -17,8 +17,5 @@
     "code-review",
     "orchestration",
     "implementation-plan"
-  ],
-  "commands": [
-    "./commands/"
   ]
 }

@@ -16,8 +16,5 @@
     "extension",
     "adapter",
     "authoring"
-  ],
-  "commands": [
-    "./commands/"
   ]
 }
