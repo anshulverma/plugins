@@ -1,6 +1,6 @@
 {
   "name": "dexter",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A disciplined investigator for any bug, outage, RCA, or performance mystery. Runs controlled experiments to localize a root cause with high confidence (durable audit trail, append-only knowledge graph, multi-test verdicts, static baseline), and accumulates a structured, reusable knowledge base from both its own investigations and ingested external RCAs/SEVs/DERPs so every future investigation starts smarter.",
   "author": {
     "name": "Anshul Verma",

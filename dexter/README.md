@@ -16,8 +16,13 @@ Named after the forensic analyst who solves cases by evidence, not hunches.
 - **Knowledge base + investigations** (persistent, dotsync-safe): `~/workspace/investigations/`
   - `knowledge/<slug>.md` — structured learnings (schema-enforced, no holes)
   - `KNOWLEDGE.md` — index
-  - `LESSONS.md` — accumulated process/methodology lessons
+  - `LESSONS.md` — accumulated process/methodology lessons (full text)
+  - `LESSONS-DIGEST.md` — one line per lesson (`<id> <trigger> -> <action>`), the compact context Dexter loads instead of `LESSONS.md`
   - `cases/<id>/` — the raw per-investigation working dirs
+
+## Lessons and writing
+
+Dexter reads `LESSONS-DIGEST.md` at bootstrap and pulls full lessons with `kb.py lesson <id>` only when a line matches. It re-runs `kb.py search` (knowledge entries plus lessons) before each experiment, before concluding, and before designing a fix, and journals which lessons it applied. When it adds a lesson, `kb.py digest` fails until the new lesson has its digest line. Reports, knowledge entries and new lessons go through the `humanize` skill before they are final, with their required structure and searchable identifiers kept intact (`references/METHODOLOGY.md`, "Writing for readers").
 
 ## The knowledge quality bar
 
@@ -31,5 +36,6 @@ scripts/new_investigation.sh <slug>                 # generate id + scaffold
 scripts/log.sh   $INV "<message>"                    # journal
 scripts/record_job.sh $INV <job> <hyp> "<env>" "<config>" "<result>"
 python3 scripts/kg.py $INV node|edge|verdict|render|show ...   # per-investigation graph
-python3 scripts/kb.py validate|search|index|template ...       # cross-investigation KB
+python3 scripts/kb.py validate|search|index|template ...       # cross-investigation KB; search also ranks LESSONS.md
+python3 scripts/kb.py lesson <id...> | digest                  # full lesson by id | check LESSONS-DIGEST.md covers every lesson
 ```

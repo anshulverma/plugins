@@ -10,13 +10,16 @@ these entries, so a vague/evidence-free entry is rejected.
 
 Commands:
   kb.py validate <entry.md>      # enforce the schema; exit!=0 and list gaps if invalid
-  kb.py search <terms...>        # rank entries by relevance (tags/domain/env/title/body)
+  kb.py search <terms...>        # rank entries (tags/domain/env/title/body), then LESSONS.md lessons
+  kb.py lesson <id...>           # print full LESSONS.md lessons by id (ids shown by search/digest)
+  kb.py digest                   # check LESSONS-DIGEST.md has one line per lesson; list missing ones
   kb.py index                    # regenerate KNOWLEDGE.md
   kb.py template <slug>          # print a blank schema-conformant entry to fill
 Env: INVESTIGATIONS_DIR (default ~/workspace/investigations)
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import sys
@@ -181,6 +184,11 @@ def _load_all() -> list[dict]:
     return out
 
 
+def _hits(text: str, term: str) -> int:
+    """Count matches starting at a word boundary, so 'hang' matches 'hanging' but not 'change'."""
+    return len(re.findall(r"(?<![a-z0-9_])" + re.escape(term), text))
+
+
 def cmd_search(args):
     terms = [t.lower() for t in args]
     entries = _load_all()
@@ -193,23 +201,94 @@ def cmd_search(args):
             " ".join(str(v) for v in (fm.get("environment") or {}).values()),
             e["body"],
         ]).lower()
-        score = sum(hay.count(t) for t in terms) if terms else 0
+        score = sum(_hits(hay, t) for t in terms) if terms else 0
         # weight tag/domain/title hits higher
         head = (str(fm.get("title", "")) + " " + str(fm.get("domain", "")) + " " +
                 " ".join(fm.get("tags", []) if isinstance(fm.get("tags"), list) else [])).lower()
-        score += 5 * sum(head.count(t) for t in terms)
+        score += 5 * sum(_hits(head, t) for t in terms)
         if score > 0 or not terms:
             scored.append((score, e))
     scored.sort(key=lambda x: -x[0])
     if not scored:
         print("(no matching knowledge entries)")
-        return
     for score, e in scored[:10]:
         fm = e["fm"]
         env = fm.get("environment") or {}
         print(f"[{score}] {fm.get('title','(untitled)')}")
         print(f"      {e['path']}")
         print(f"      domain={fm.get('domain','?')} env={env.get('org','?')}/{env.get('surface','?')} tags={fm.get('tags','')}")
+    if terms:
+        _search_lessons(terms)
+
+
+def lessons_path() -> str:
+    return os.path.join(base_dir(), "LESSONS.md")
+
+
+def digest_path() -> str:
+    return os.path.join(base_dir(), "LESSONS-DIGEST.md")
+
+
+def _load_lessons() -> list[dict]:
+    """One lesson per '## ' heading in LESSONS.md. The id hashes the heading, so it survives
+    new lessons being added at the top (line numbers shift; append-only headings don't)."""
+    if not os.path.isfile(lessons_path()):
+        return []
+    lessons, cur = [], None
+    for n, line in enumerate(open(lessons_path(), encoding="utf-8"), 1):
+        if line.startswith("## "):
+            head = line[3:].strip()
+            cur = {"id": hashlib.sha1(head.encode()).hexdigest()[:6], "line": n, "head": head, "body": []}
+            lessons.append(cur)
+        elif cur:
+            cur["body"].append(line)
+    return lessons
+
+
+def _search_lessons(terms: list[str]) -> None:
+    """Rank lessons like knowledge entries; heading hits weigh 6x."""
+    scored = []
+    for l in _load_lessons():
+        head, body = l["head"].lower(), "".join(l["body"]).lower()
+        score = sum(_hits(body, t) + 6 * _hits(head, t) for t in terms)
+        if score > 0:
+            scored.append((score, l))
+    scored.sort(key=lambda x: -x[0])
+    print("\nLessons (full text: kb.py lesson <id>):")
+    if not scored:
+        print("(no matching lessons)")
+    for score, l in scored[:10]:
+        print(f"[{score}] {l['id']} {l['head']}")
+
+
+def cmd_lesson(args):
+    lessons = {l["id"]: l for l in _load_lessons()}
+    missing = [i for i in args if i not in lessons]
+    for i in args:
+        if i in lessons:
+            l = lessons[i]
+            print(f"## {l['head']}  ({lessons_path()}:{l['line']})")
+            print("".join(l["body"]).strip() + "\n")
+    if missing or not args:
+        print(f"unknown lesson id(s): {' '.join(missing) or '(none given)'}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_digest(args):
+    """Check LESSONS-DIGEST.md has exactly one line per lesson; list what to add or remove."""
+    lessons = _load_lessons()
+    have = set(re.findall(r"^- ([0-9a-f]{6}) ", open(digest_path(), encoding="utf-8").read(), re.M)) \
+        if os.path.isfile(digest_path()) else set()
+    missing = [l for l in lessons if l["id"] not in have]
+    orphans = have - {l["id"] for l in lessons}
+    for l in missing:
+        print(f"MISSING {l['id']}  {l['head']}  ({lessons_path()}:{l['line']})")
+    for i in sorted(orphans):
+        print(f"ORPHAN  {i}  (no lesson has this id; remove the line)")
+    if missing or orphans:
+        print(f"digest stale: add a line per MISSING lesson to {digest_path()} as '- <id> <when -> do, <=25 words>'")
+        sys.exit(1)
+    print(f"OK: {digest_path()} covers all {len(lessons)} lessons")
 
 
 def cmd_index(args):
@@ -277,7 +356,7 @@ def main():
         print(__doc__)
         sys.exit(2)
     cmd, rest = sys.argv[1], sys.argv[2:]
-    {"validate": cmd_validate, "search": cmd_search, "index": cmd_index, "template": cmd_template}.get(
+    {"validate": cmd_validate, "search": cmd_search, "lesson": cmd_lesson, "digest": cmd_digest, "index": cmd_index, "template": cmd_template}.get(
         cmd, lambda a: (print(f"unknown command {cmd}"), sys.exit(2))
     )(rest)
 
