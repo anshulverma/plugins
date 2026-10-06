@@ -38,6 +38,11 @@ def knowledge_dir() -> str:
     return os.path.join(base_dir(), "knowledge")
 
 
+def _strip_comments(text: str) -> str:
+    """Drop HTML comments such as humanize's context block: metadata, not entry content."""
+    return re.sub(r"(?s)<!--.*?-->", "", text)
+
+
 def _split_frontmatter(text: str) -> tuple[str, str]:
     if not text.startswith("---"):
         return "", text
@@ -113,7 +118,7 @@ def _sections(body: str) -> dict:
 def validate(path: str) -> list[str]:
     problems: list[str] = []
     try:
-        text = open(path, encoding="utf-8").read()
+        text = _strip_comments(open(path, encoding="utf-8").read())
     except OSError as e:
         return [f"cannot read {path}: {e}"]
     fm_raw, body = _split_frontmatter(text)
@@ -178,7 +183,7 @@ def _load_all() -> list[dict]:
         if not fn.endswith(".md"):
             continue
         path = os.path.join(d, fn)
-        fm_raw, body = _split_frontmatter(open(path, encoding="utf-8").read())
+        fm_raw, body = _split_frontmatter(_strip_comments(open(path, encoding="utf-8").read()))
         fm = _parse_fm(fm_raw) if fm_raw else {}
         out.append({"path": path, "fn": fn, "fm": fm, "body": body})
     return out
@@ -234,8 +239,12 @@ def _load_lessons() -> list[dict]:
     new lessons being added at the top (line numbers shift; append-only headings don't)."""
     if not os.path.isfile(lessons_path()):
         return []
-    lessons, cur = [], None
+    lessons, cur, in_comment = [], None, False
     for n, line in enumerate(open(lessons_path(), encoding="utf-8"), 1):
+        # Skip whole-line HTML comments (humanize-context blocks) but keep line numbers.
+        if in_comment or line.lstrip().startswith("<!--"):
+            in_comment = "-->" not in line
+            continue
         if line.startswith("## "):
             head = line[3:].strip()
             cur = {"id": hashlib.sha1(head.encode()).hexdigest()[:6], "line": n, "head": head, "body": []}

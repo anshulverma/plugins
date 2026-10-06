@@ -5,7 +5,8 @@ import hashlib, os, subprocess, sys, tempfile
 d = tempfile.mkdtemp()
 os.makedirs(os.path.join(d, "knowledge"))
 H1, H2 = "2026-08-18 — Shrink the batch to split persistent from activation memory", "Launch MAST jobs detached"
-open(os.path.join(d, "LESSONS.md"), "w").write(f"# Lessons\n\n## {H1}\n- batch body\n\n## {H2}\n- unrelated\n")
+open(os.path.join(d, "LESSONS.md"), "w").write(
+    f"# Lessons\n\n## {H1}\n- batch body\n<!-- humanize-context\npurpose: zebra\n-->\n\n## {H2}\n- unrelated\n")
 id1, id2 = (hashlib.sha1(h.encode()).hexdigest()[:6] for h in (H1, H2))
 
 
@@ -22,6 +23,7 @@ assert "(no matching lessons)" in kb("search", "atch").stdout  # word-start only
 r = kb("lesson", id1)
 assert r.returncode == 0 and "batch body" in r.stdout and "LESSONS.md:3" in r.stdout, r
 assert kb("lesson", "ffffff").returncode == 1
+assert "(no matching lessons)" in kb("search", "zebra").stdout  # comment blocks are not lesson text
 
 r = kb("digest")  # no digest file yet: both lessons missing
 assert r.returncode == 1 and f"MISSING {id1}" in r.stdout and f"MISSING {id2}" in r.stdout, r
