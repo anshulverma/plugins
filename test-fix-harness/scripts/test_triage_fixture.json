@@ -1,0 +1,10 @@
+[
+  {"issue_id": "1", "test_name": "{cell}trainlib/tests/framework:test_loop_utils - test_is_done (trainlib.tests.framework.test_loop_utils.LoopUtilsTest)", "issue_type": "FAILURE", "framework": "PYTHON_UNITTEST"},
+  {"issue_id": "2", "test_name": "{cell}trainlib/tests/framework:test_loop_utils - test_is_epoch_done (trainlib.tests.framework.test_loop_utils.LoopUtilsTest)", "issue_type": "FAILURE", "framework": "PYTHON_UNITTEST"},
+  {"issue_id": "3", "test_name": "{cell}trainlib/tests/framework:test_loop_utils - test_is_done (trainlib.tests.framework.test_loop_utils.LoopUtilsTest)", "issue_type": "FAILURE", "framework": "PYTHON_UNITTEST"},
+  {"issue_id": "4", "test_name": "{cell}evallib/tests/utils:test_utils - test_get_rand_data_binary_GPU (evallib.tests.utils.test_random_data.BinaryRandomDataTest)", "issue_type": "SKIPPING", "framework": "PYTHON_UNITTEST"},
+  {"issue_id": "5", "test_name": "{cell}evallib/tests/metrics:test_synclib - test_gather_uneven_multidim_nccl (evallib.tests.metrics.test_synclib.SynclibTest)", "issue_type": "FLAKY", "framework": "PYTHON_UNITTEST"},
+  {"issue_id": "6", "test_name": "{cell}projects/embedding_model:main", "issue_type": "FAILURE", "framework": ""},
+  {"issue_id": "7", "test_name": "{cell}serving/predictor/examples:predictor_examples.variant_a", "issue_type": "FAILURE", "framework": ""},
+  {"issue_id": "8", "test_name": "{cell}serving/predictor/examples:predictor_examples.variant_b", "issue_type": "FAILURE", "framework": ""}
+]
